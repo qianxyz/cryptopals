@@ -1,93 +1,123 @@
-/// A string that is valid hex.
-struct Hex(String);
-
-/// A string that is valid base64.
-struct Base64(String);
-
-#[derive(Debug)]
-struct BadHex; // TODO: add information
-
-impl std::str::FromStr for Hex {
-    type Err = BadHex;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // a valid hex string must have even length
-        if s.len() % 2 != 0 {
-            return Err(BadHex);
-        }
-
-        // and only contains 0-9, a-f, A-F
-        for c in s.chars() {
-            if !c.is_ascii_hexdigit() {
-                return Err(BadHex);
-            }
-        }
-
-        Ok(Hex(s.to_owned()))
-    }
-}
-
-impl std::fmt::Display for Hex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::fmt::Display for Base64 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Convert a hex string to its underlying bytes.
-impl From<Hex> for Vec<u8> {
-    fn from(s: Hex) -> Self {
-        s.0.as_bytes()
-            .chunks_exact(2)
-            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
-            .collect()
-    }
-}
-
-/// Encode bytes to hex.
-impl<T: AsRef<[u8]>> From<T> for Hex {
-    fn from(bytes: T) -> Self {
-        let s: String = bytes
+pub mod hex {
+    /// Encode bytes into a hex string.
+    pub fn encode(bytes: impl AsRef<[u8]>) -> String {
+        bytes
             .as_ref()
             .iter()
             .map(|b| format!("{:02x}", b))
-            .collect();
+            .collect()
+    }
 
-        Hex(s)
+    /// Decode bytes from a hex string.
+    pub fn decode(s: impl AsRef<str>) -> Option<Vec<u8>> {
+        if s.as_ref().len() % 2 != 0 {
+            return None;
+        }
+
+        let mut v = Vec::with_capacity(s.as_ref().len() / 2);
+
+        for pair in s.as_ref().as_bytes().chunks_exact(2) {
+            let s2 = std::str::from_utf8(pair).ok()?;
+            let b = u8::from_str_radix(s2, 16).ok()?;
+            v.push(b);
+        }
+
+        Some(v)
     }
 }
 
-/// Encode bytes to Base64.
-impl<T: AsRef<[u8]>> From<T> for Base64 {
-    fn from(bytes: T) -> Self {
-        let s: String = bytes
-            .as_ref()
-            .chunks_exact(3) // TODO: handle the remaining
-            .flat_map(|tr| {
-                [
-                    tr[0] >> 2,
-                    (tr[0] & 0b11) << 4 | tr[1] >> 4,
-                    (tr[1] & 0b1111) << 2 | tr[2] >> 6,
-                    tr[2] & 0b111111,
-                ]
-                .into_iter()
-                .map(|b| match b {
-                    0..=25 => (b + b'A') as char,
-                    26..=51 => (b - 26 + b'a') as char,
-                    52..=61 => (b - 52 + b'0') as char,
-                    62 => '+',
-                    63 => '/',
-                    _ => unreachable!(),
-                })
-            })
-            .collect();
+pub mod base64 {
+    /// Encode bytes into Base64.
+    pub fn encode(bytes: impl AsRef<[u8]>) -> String {
+        let capacity = (bytes.as_ref().len() + 2) / 3 * 4;
+        let mut s = String::with_capacity(capacity);
 
-        Base64(s)
+        // convert a byte into Base64 char
+        fn b2c(b: u8) -> char {
+            match b {
+                0..=25 => (b + b'A') as char,
+                26..=51 => (b - 26 + b'a') as char,
+                52..=61 => (b - 52 + b'0') as char,
+                62 => '+',
+                63 => '/',
+                _ => unreachable!(),
+            }
+        }
+
+        let mut iter = bytes.as_ref().chunks_exact(3);
+        for ck in iter.by_ref() {
+            s.push(b2c(ck[0] >> 2));
+            s.push(b2c((ck[0] & 0b11) << 4 | ck[1] >> 4));
+            s.push(b2c((ck[1] & 0b1111) << 2 | ck[2] >> 6));
+            s.push(b2c(ck[2] & 0b111111));
+        }
+
+        let r = iter.remainder();
+        match r.len() {
+            0 => (),
+            1 => {
+                s.push(b2c(r[0] >> 2));
+                s.push(b2c((r[0] & 0b11) << 4));
+                s.push_str("==");
+            }
+            2 => {
+                s.push(b2c(r[0] >> 2));
+                s.push(b2c((r[0] & 0b11) << 4 | r[1] >> 4));
+                s.push(b2c((r[1] & 0b1111) << 2));
+                s.push('=');
+            }
+            _ => unreachable!(),
+        }
+
+        s
+    }
+
+    /// Decode bytes from Base64.
+    /// Does not check if the input has valid padding.
+    pub fn decode(s: impl AsRef<str>) -> Option<Vec<u8>> {
+        let capacity = s.as_ref().len() / 4 * 3;
+        let mut v = Vec::with_capacity(capacity);
+
+        let mut bit_buf = 0u32;
+        let mut char_count = 0;
+        for (i, c) in s.as_ref().chars().enumerate() {
+            if c == '=' {
+                break;
+            }
+
+            let b = match c {
+                'A'..='Z' => c as u8 - b'A',
+                'a'..='z' => c as u8 - b'a' + 26,
+                '0'..='9' => c as u8 - b'0' + 52,
+                '+' => 62,
+                '/' => 63,
+                _ => return None,
+            };
+            bit_buf |= (b as u32) << (6 * (3 - i % 4));
+
+            // flush out the buffer every 4 chars
+            if i % 4 == 3 {
+                v.push((bit_buf >> 16) as u8);
+                v.push((bit_buf >> 8) as u8);
+                v.push(bit_buf as u8);
+                bit_buf = 0; // clear buffer
+            }
+
+            char_count += 1;
+        }
+
+        // flush the remaining in the buffer
+        match char_count % 4 {
+            0 => (),
+            2 => v.push((bit_buf >> 16) as u8),
+            3 => {
+                v.push((bit_buf >> 16) as u8);
+                v.push((bit_buf >> 8) as u8);
+            }
+            _ => unreachable!(),
+        }
+
+        Some(v)
     }
 }
 
@@ -149,10 +179,12 @@ fn char_freq_score(s: impl AsRef<str>) -> f32 {
     score
 }
 
+// TODO: build a struct for plaintext, key and its score.
+
 /// Crack single character XOR encryption.
 /// Returns the plaintext with its score (lower is better),
 /// or None if every possible XOR is not valid UTF-8.
-fn single_char_xor_decrypt(cipher: impl AsRef<[u8]>) -> Option<(f32, String)> {
+pub fn single_char_xor_decrypt(cipher: impl AsRef<[u8]>) -> Option<(f32, String)> {
     (0..128u8)
         .filter_map(|k| {
             String::from_utf8(xor(&cipher, [k]))
@@ -167,51 +199,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn q1() {
-        let hex = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
-        let base64 = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
+    fn base64_encode_decode() {
+        let tests = [
+            ("light work.", "bGlnaHQgd29yay4="),
+            ("light work", "bGlnaHQgd29yaw=="),
+            ("light wor", "bGlnaHQgd29y"),
+            ("light wo", "bGlnaHQgd28="),
+            ("light w", "bGlnaHQgdw=="),
+        ];
 
-        let bytes: Vec<u8> = hex.parse::<Hex>().unwrap().into();
-
-        assert_eq!(Base64::from(bytes).to_string(), base64);
+        for (plain, b64) in tests {
+            assert_eq!(base64::encode(plain.as_bytes()), b64);
+            assert_eq!(base64::decode(b64).unwrap(), plain.as_bytes());
+        }
     }
 
     #[test]
-    fn q2() {
+    fn hex_to_base64() {
+        let hex = "49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d";
+        let base64 = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t";
+
+        let bytes: Vec<u8> = hex::decode(hex).unwrap();
+
+        assert_eq!(base64::encode(bytes), base64);
+    }
+
+    #[test]
+    fn equal_length_xor() {
         let s1 = "1c0111001f010100061a024b53535009181c";
         let s2 = "686974207468652062756c6c277320657965";
         let s3 = "746865206b696420646f6e277420706c6179";
 
-        let b1: Vec<u8> = s1.parse::<Hex>().unwrap().into();
-        let b2: Vec<u8> = s2.parse::<Hex>().unwrap().into();
+        let b1: Vec<u8> = hex::decode(s1).unwrap();
+        let b2: Vec<u8> = hex::decode(s2).unwrap();
         let b3 = xor(b1, b2);
 
-        assert_eq!(Hex::from(b3).to_string(), s3);
+        assert_eq!(hex::encode(b3), s3);
     }
 
     #[test]
-    fn q3() {
-        let hex = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
+    fn repeating_key_xor() {
+        let plain = "Burning 'em, if you ain't quick and nimble
+I go crazy when I hear a cymbal";
+        let key = "ICE";
+        let out = "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f";
 
-        let bytes: Vec<u8> = hex.parse::<Hex>().unwrap().into();
-        let (_, plain) = single_char_xor_decrypt(bytes).unwrap();
+        let hex = hex::encode(xor(plain.as_bytes(), key.as_bytes()));
 
-        assert_eq!(plain, "Cooking MC's like a pound of bacon");
-    }
-
-    #[test]
-    fn q4() {
-        let s = include_str!("../data/4.txt");
-
-        let (_, plain) = s
-            .split('\n')
-            .filter_map(|s| {
-                let bytes: Vec<u8> = s.parse::<Hex>().unwrap().into();
-                single_char_xor_decrypt(bytes)
-            })
-            .min_by(|x, y| x.0.total_cmp(&y.0))
-            .unwrap();
-
-        assert_eq!(plain, "Now that the party is jumping\n");
+        assert_eq!(hex, out);
     }
 }
