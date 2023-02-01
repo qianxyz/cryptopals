@@ -1,32 +1,42 @@
 mod basics;
 
-use basics::{hex, single_char_xor_decrypt};
+use basics::{base64, hex, repeating_key_xor_decrypt, single_char_xor_decrypt};
 
 fn main() {
-    single_byte_xor();
-    single_byte_xor_detect();
+    // q3();
+    // q4();
+    q6();
 }
 
-fn single_byte_xor() {
+fn q3() {
     let hex = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736";
 
-    let bytes: Vec<u8> = hex::decode(hex).unwrap();
-    let (score, plain) = single_char_xor_decrypt(bytes).unwrap();
+    let bytes = hex::decode(hex).unwrap();
+    let plains = single_char_xor_decrypt(bytes);
 
-    println!("{plain} {score}");
+    dbg!(plains);
 }
 
-fn single_byte_xor_detect() {
+fn q4() {
     let s = include_str!("../data/4.txt");
 
-    let (score, plain) = s
+    let plains: Vec<_> = s
         .split('\n')
-        .filter_map(|s| {
+        .flat_map(|s| {
             let bytes: Vec<u8> = hex::decode(s).unwrap();
             single_char_xor_decrypt(bytes)
         })
-        .min_by(|x, y| x.0.total_cmp(&y.0))
-        .unwrap();
+        .collect();
 
-    println!("{plain} {score}");
+    dbg!(plains);
+}
+
+fn q6() {
+    let s = include_str!("../data/6.txt");
+    let s = s.replace("\n", "");
+
+    let bytes = base64::decode(s).unwrap();
+    let plains = repeating_key_xor_decrypt(bytes);
+
+    dbg!(plains);
 }

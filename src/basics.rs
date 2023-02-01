@@ -126,9 +126,9 @@ fn xor(base: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Vec<u8> {
         .collect()
 }
 
-/// The score of a string, based on character frequency.
-/// A lower score means it's more likely to be real English text.
-fn char_freq_score(s: impl AsRef<str>) -> f32 {
+/// Determine if given string is English, based on a heuristic threshold.
+fn is_english(s: impl AsRef<str>) -> bool {
+    const THRESHOLD: f32 = 0.75; // epic guesswork
     const EXPECTED_FREQ: [(char, f32); 27] = [
         (' ', 0.18032), // This is essential
         ('a', 0.08167),
@@ -162,6 +162,9 @@ fn char_freq_score(s: impl AsRef<str>) -> f32 {
     let mut count = std::collections::HashMap::new();
     let mut total_chars = 0;
     for c in s.as_ref().chars() {
+        if !c.is_ascii_graphic() && !c.is_ascii_whitespace() {
+            return false;
+        }
         *count.entry(c.to_ascii_lowercase()).or_insert(0) += 1;
         total_chars += 1;
     }
@@ -172,22 +175,46 @@ fn char_freq_score(s: impl AsRef<str>) -> f32 {
         score += (expect - actual).abs();
     }
 
-    score
+    score < THRESHOLD
 }
 
-// TODO: build a struct for plaintext, key and its score.
-
 /// Crack single character XOR encryption.
-/// Returns the plaintext with its score (lower is better),
-/// or None if every possible XOR is not valid UTF-8.
-pub fn single_char_xor_decrypt(cipher: impl AsRef<[u8]>) -> Option<(f32, String)> {
+/// Returns a list of strings that may be valid English.
+pub fn single_char_xor_decrypt(bytes: impl AsRef<[u8]>) -> Vec<String> {
     (0..128u8)
-        .filter_map(|k| {
-            String::from_utf8(xor(&cipher, [k]))
-                .map(|s| (char_freq_score(&s), s))
-                .ok()
-        })
-        .min_by(|x, y| x.0.total_cmp(&y.0))
+        .filter_map(|k| String::from_utf8(xor(&bytes, [k])).ok())
+        .filter(|s| is_english(s))
+        .collect()
+}
+
+fn hamming_distance(bs1: impl AsRef<[u8]>, bs2: impl AsRef<[u8]>) -> u32 {
+    bs1.as_ref()
+        .iter()
+        .zip(bs2.as_ref().iter())
+        .map(|(b1, b2)| (b1 ^ b2).count_ones())
+        .sum()
+}
+
+/// Break repeating-key XOR encryption.
+pub fn repeating_key_xor_decrypt(bytes: impl AsRef<[u8]>) -> Vec<String> {
+    const KEYSIZES: [usize; 12] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
+
+    let keysize_and_distance = KEYSIZES.into_iter().map(|k| {
+        let chunks: Vec<_> = bytes.as_ref().chunks_exact(k).collect();
+        let dist: u32 = chunks
+            .windows(2)
+            .map(|w| hamming_distance(w[0], w[1]))
+            .sum();
+        let avg_dist = dist as f32 / (chunks.len() - 1) as f32;
+
+        (k, avg_dist as f32 / k as f32)
+    });
+
+    let (keysize, _) = keysize_and_distance
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .unwrap();
+
+    todo!()
 }
 
 #[cfg(test)]
@@ -243,5 +270,13 @@ I go crazy when I hear a cymbal";
         let hex = hex::encode(xor(plain.as_bytes(), key.as_bytes()));
 
         assert_eq!(hex, out);
+    }
+
+    #[test]
+    fn wokka_wokka() {
+        let bs1 = b"this is a test";
+        let bs2 = b"wokka wokka!!!";
+
+        assert_eq!(hamming_distance(bs1, bs2), 37);
     }
 }
