@@ -1,11 +1,7 @@
 pub mod hex {
     /// Encode bytes into a hex string.
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
-        bytes
-            .as_ref()
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 
     /// Decode bytes from a hex string.
@@ -124,8 +120,8 @@ pub mod base64 {
 /// Byte-by-byte xor.
 fn xor(base: impl AsRef<[u8]>, key: impl AsRef<[u8]>) -> Vec<u8> {
     base.as_ref()
-        .into_iter()
-        .zip(key.as_ref().into_iter().cycle())
+        .iter()
+        .zip(key.as_ref().iter().cycle())
         .map(|(b, k)| b ^ k)
         .collect()
 }

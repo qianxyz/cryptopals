@@ -13,7 +13,7 @@ fn single_byte_xor() {
     let bytes: Vec<u8> = hex::decode(hex).unwrap();
     let (score, plain) = single_char_xor_decrypt(bytes).unwrap();
 
-    println!("{} {}", plain, score);
+    println!("{plain} {score}");
 }
 
 fn single_byte_xor_detect() {
@@ -28,5 +28,5 @@ fn single_byte_xor_detect() {
         .min_by(|x, y| x.0.total_cmp(&y.0))
         .unwrap();
 
-    println!("{} {}", plain, score);
+    println!("{plain} {score}");
 }
