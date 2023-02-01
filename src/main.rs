@@ -33,7 +33,7 @@ fn q4() {
 
 fn q6() {
     let s = include_str!("../data/6.txt");
-    let s = s.replace("\n", "");
+    let s = s.replace('\n', "");
 
     let bytes = base64::decode(s).unwrap();
     let plain = repeating_key_xor_decrypt(bytes);

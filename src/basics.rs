@@ -207,7 +207,7 @@ pub fn repeating_key_xor_decrypt(bytes: impl AsRef<[u8]>) -> String {
             .sum();
         let avg_dist = dist as f32 / (chunks.len() - 1) as f32;
 
-        (k, avg_dist as f32 / k as f32)
+        (k, avg_dist / k as f32)
     });
 
     let (keysize, _) = keysize_and_distance
