@@ -162,7 +162,7 @@ fn is_english(s: impl AsRef<str>) -> bool {
     let mut count = std::collections::HashMap::new();
     let mut total_chars = 0;
     for c in s.as_ref().chars() {
-        if !c.is_ascii_graphic() && !c.is_ascii_whitespace() {
+        if !c.is_ascii_graphic() && c != ' ' && c != '\n' {
             return false;
         }
         *count.entry(c.to_ascii_lowercase()).or_insert(0) += 1;
@@ -196,7 +196,7 @@ fn hamming_distance(bs1: impl AsRef<[u8]>, bs2: impl AsRef<[u8]>) -> u32 {
 }
 
 /// Break repeating-key XOR encryption.
-pub fn repeating_key_xor_decrypt(bytes: impl AsRef<[u8]>) -> Vec<String> {
+pub fn repeating_key_xor_decrypt(bytes: impl AsRef<[u8]>) -> String {
     const KEYSIZES: [usize; 12] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
 
     let keysize_and_distance = KEYSIZES.into_iter().map(|k| {
@@ -214,7 +214,26 @@ pub fn repeating_key_xor_decrypt(bytes: impl AsRef<[u8]>) -> Vec<String> {
         .min_by(|x, y| x.1.total_cmp(&y.1))
         .unwrap();
 
-    todo!()
+    let cols: Vec<_> = (0..keysize)
+        .map(|i| {
+            let col: Vec<_> = bytes
+                .as_ref()
+                .iter()
+                .skip(i)
+                .step_by(keysize)
+                .cloned()
+                .collect();
+
+            single_char_xor_decrypt(col).pop().unwrap().into_bytes()
+        })
+        .collect();
+
+    (0..cols[0].len())
+        .map(|i| {
+            let v: Vec<_> = cols.iter().filter_map(|s| s.get(i).cloned()).collect();
+            String::from_utf8(v).unwrap()
+        })
+        .collect()
 }
 
 #[cfg(test)]

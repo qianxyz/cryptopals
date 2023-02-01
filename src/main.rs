@@ -3,8 +3,8 @@ mod basics;
 use basics::{base64, hex, repeating_key_xor_decrypt, single_char_xor_decrypt};
 
 fn main() {
-    // q3();
-    // q4();
+    q3();
+    q4();
     q6();
 }
 
@@ -14,7 +14,7 @@ fn q3() {
     let bytes = hex::decode(hex).unwrap();
     let plains = single_char_xor_decrypt(bytes);
 
-    dbg!(plains);
+    println!("{}", plains[0]);
 }
 
 fn q4() {
@@ -28,7 +28,7 @@ fn q4() {
         })
         .collect();
 
-    dbg!(plains);
+    println!("{}", plains[0]);
 }
 
 fn q6() {
@@ -36,7 +36,7 @@ fn q6() {
     let s = s.replace("\n", "");
 
     let bytes = base64::decode(s).unwrap();
-    let plains = repeating_key_xor_decrypt(bytes);
+    let plain = repeating_key_xor_decrypt(bytes);
 
-    dbg!(plains);
+    println!("{plain}");
 }
